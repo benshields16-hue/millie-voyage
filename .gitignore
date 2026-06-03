@@ -5,3 +5,7 @@ dist-ssr
 .DS_Store
 *.log
 .claude/
+
+# shared-track backend (Tier 1b): secrets + runtime data, never committed
+server/.env
+server/data/

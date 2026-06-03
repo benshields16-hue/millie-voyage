@@ -631,6 +631,35 @@ h2 {
   margin: 0.2rem 0 0;
 }
 
+/* ── Live-feed provenance (source + "updated" + staleness; Tier 1) ───────────── */
+.src {
+  font-size: 0.74rem;
+  margin: 0 0 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+.src--live {
+  color: var(--go);
+}
+.src--stale {
+  color: var(--caution);
+}
+.src--offline {
+  color: var(--fg-muted);
+}
+.src--manual {
+  color: var(--accent);
+}
+.linkbtn {
+  font: inherit;
+  font-size: inherit;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  padding: 0;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* ── Status pill tones ───────────────────────────────────────────────────── */
 .pill--online,
 .pill--boat {

@@ -1,0 +1,18 @@
+{
+  "_comment": "Baked snapshot of the voyage route for the public map's context layer. Kept in sync BY HAND with src/data/legs.ts (PORTS in leg order + GATE_MARKS). The route is fixed for this voyage, so drift risk is near-zero.",
+  "ports": [
+    { "name": "Perros-Guirec", "lat": 48.8045, "lon": -3.4406 },
+    { "name": "Roscoff", "lat": 48.7217, "lon": -3.9691 },
+    { "name": "L'Aber Wrac'h", "lat": 48.5995, "lon": -4.5605 },
+    { "name": "Brest", "lat": 48.379, "lon": -4.4894 },
+    { "name": "Camaret", "lat": 48.2751, "lon": -4.5912 },
+    { "name": "Audierne", "lat": 48.012, "lon": -4.557 },
+    { "name": "Bénodet", "lat": 47.874, "lon": -4.104 },
+    { "name": "Concarneau", "lat": 47.8703, "lon": -3.9149 },
+    { "name": "Belle-Île", "lat": 47.3523, "lon": -3.1568 }
+  ],
+  "gates": [
+    { "name": "Le Four lighthouse", "lat": 48.5232, "lon": -4.8052 },
+    { "name": "La Vieille lighthouse", "lat": 48.0407, "lon": -4.7564 }
+  ]
+}

@@ -4,6 +4,8 @@ import { applyTheme } from './theme'
 import { mountShell } from './ui/shell'
 import { showUpdatePill } from './ui/components'
 import { positionService } from './sources/positionService'
+import { weatherSource } from './sources/weatherSource'
+import { shareTrack } from './sources/shareTrack'
 import { persist } from './state/persist'
 
 const root = document.querySelector<HTMLDivElement>('#app')
@@ -22,6 +24,18 @@ if (root) {
   // Resolved position + honest connection status flow into the store, which the
   // planner (progress) and tracker both read. Throttled to ~3 s inside the service.
   positionService.subscribe((snap) => store.set({ fix: snap.fix, conn: snap.conn }))
+
+  // Live Open-Meteo forecast (Tier 1). The Tides tab derives the go/no-go from this
+  // at render time; failures degrade silently to last-known, so the core is untouched.
+  // No permission gesture needed (unlike GPS), so it starts at load.
+  weatherSource.subscribe((snap) => store.set({ wx: snap }))
+  weatherSource.start()
+
+  // Opt-in live-position sharing (Tier 1b). Status flows to the store so the Reference
+  // tab reflects it; sharing only starts if the skipper has enabled it (default off →
+  // zero network behaviour, offline core untouched).
+  shareTrack.subscribeStatus((shareStatus) => store.set({ shareStatus }))
+  if (shareTrack.config().enabled) shareTrack.start()
 
   // Save only the persisted slices, and only when they actually change.
   let lastSaved = ''

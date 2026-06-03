@@ -26,7 +26,21 @@ export default defineConfig(({ command }) => ({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
-        // Open-Meteo stale-while-revalidate is added here when Tier 1 lands.
+        // Open-Meteo (forecast + marine): serve the last response instantly, refresh in
+        // the background. This is transport-level resilience — a cold offline reload still
+        // resolves the fetch — complementing weatherSource's in-app last-known + age stamp.
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/(?:marine-)?api\.open-meteo\.com\/.*/i,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'open-meteo',
+              expiration: { maxEntries: 32, maxAgeSeconds: 6 * 60 * 60 },
+              cacheableResponse: { statuses: [0, 200] },
+              matchOptions: { ignoreVary: true },
+            },
+          },
+        ],
       },
       devOptions: { enabled: false },
     }),

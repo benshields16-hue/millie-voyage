@@ -1,6 +1,6 @@
 import { el } from './dom'
-import { store } from '../state/appState'
-import { GATES, type GateId, type CompassPoint } from '../data/gates'
+import { store, type AppState } from '../state/appState'
+import { GATES, type GateId, type CompassPoint, type Gate } from '../data/gates'
 import { TABLE_RANGE } from '../data/tides'
 import {
   hwEventsForDate,
@@ -13,6 +13,7 @@ import {
 import { minToHm, roundToMin } from '../tide/timeMin'
 import { coeffBand, coeffTimeline } from '../tide/coeffTimeline'
 import { windVerdict, VERDICT, type Verdict } from '../tide/windGate'
+import { liveWindForGate, liveWaveForGate, degToPoint, speedToBeaufort, type LiveWind } from '../sources/wx'
 import { CAVEATS } from '../tide/caveats'
 import { disclaimer } from './components'
 
@@ -35,7 +36,8 @@ export function renderTides(): HTMLElement {
     { class: 'view' },
     coeffCard(s.gateDate),
     gateCalcCard(gate, s.gateDate),
-    windCard(gate, s.windDir, s.windForce),
+    windCard(s, gate),
+    swellCard(s, gate),
   )
 }
 
@@ -189,27 +191,67 @@ const VERDICT_UI: Record<Verdict, { cls: string; label: string }> = {
   [VERDICT.NOGO]: { cls: 'nogo', label: 'No-go' },
 }
 
-function windCard(gate: (typeof GATES)[GateId], dir: CompassPoint, force: number): HTMLElement {
-  const r = windVerdict(gate, { dir, forceBft: force })
+const WX_STALE_MS = 3 * 60 * 60_000
+
+function fmtClock(ts: number): string {
+  return new Date(ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+}
+
+type WxTone = 'live' | 'stale' | 'offline'
+function wxTone(wx: AppState['wx'], fetchedTs: number): WxTone {
+  if (wx?.offline) return 'offline'
+  if (Date.now() - fetchedTs > WX_STALE_MS) return 'stale'
+  return 'live'
+}
+const TONE_DOT: Record<WxTone, string> = { live: '●', stale: '◐', offline: '○' }
+
+/** Honest provenance line, e.g. "● Live · Open-Meteo · Le Four lighthouse · for Mon 8 ~10:42 · updated 09:14". */
+function feedLine(label: string, gate: Gate, targetYmd: string, targetMin: number, wx: AppState['wx'], fetchedTs: number): HTMLElement {
+  const tone = wxTone(wx, fetchedTs)
+  const d = fmtDayLabel(targetYmd)
+  const note = tone === 'offline' ? 'last forecast' : tone === 'stale' ? 'updated (stale)' : 'updated'
+  return el(
+    'p',
+    { class: `src src--${tone}` },
+    `${TONE_DOT[tone]} ${label} · ${gate.gateMark} · for ${d.dow} ${d.day} ~${minToHm(targetMin)} · ${note} ${fmtClock(fetchedTs)}`,
+  )
+}
+
+function windCard(s: AppState, gate: Gate): HTMLElement {
+  const live = s.windSource === 'live' ? liveWindForGate(s.wx, s.gateId, s.gateDate) : null
+  const effDir: CompassPoint = live ? degToPoint(live.dirFromDeg) : s.windDir
+  const effForce = live ? speedToBeaufort(live.kn) : s.windForce
+  const r = windVerdict(gate, { dir: effDir, forceBft: effForce })
   const ui = VERDICT_UI[r.state]
 
+  // Editing either control pins manual and snapshots the OTHER current value, so the
+  // skipper's override starts from exactly what was on screen (live forecast or not).
   const dirSel = el(
     'select',
-    { class: 'sel', 'aria-label': 'wind direction', onChange: (e: Event) => store.set({ windDir: (e.target as HTMLSelectElement).value as CompassPoint }) },
-    ...POINTS.map((p) => el('option', { value: p, selected: p === dir ? 'selected' : null }, p)),
+    {
+      class: 'sel',
+      'aria-label': 'wind direction',
+      onChange: (e: Event) =>
+        store.set({ windDir: (e.target as HTMLSelectElement).value as CompassPoint, windForce: effForce, windSource: 'manual' }),
+    },
+    ...POINTS.map((p) => el('option', { value: p, selected: p === effDir ? 'selected' : null }, p)),
   )
   const forceSel = el(
     'select',
-    { class: 'sel', 'aria-label': 'wind force', onChange: (e: Event) => store.set({ windForce: Number((e.target as HTMLSelectElement).value) }) },
-    ...Array.from({ length: 13 }, (_, n) =>
-      el('option', { value: String(n), selected: n === force ? 'selected' : null }, `F${n}`),
-    ),
+    {
+      class: 'sel',
+      'aria-label': 'wind force',
+      onChange: (e: Event) =>
+        store.set({ windForce: Number((e.target as HTMLSelectElement).value), windDir: effDir, windSource: 'manual' }),
+    },
+    ...Array.from({ length: 13 }, (_, n) => el('option', { value: String(n), selected: n === effForce ? 'selected' : null }, `F${n}`)),
   )
 
   return el(
     'section',
     { class: 'card' },
     el('h2', null, `Wind go / no-go — ${gate.name}`),
+    windProvenance(s, gate, live),
     el(
       'div',
       { class: 'wind-inputs' },
@@ -222,8 +264,50 @@ function windCard(gate: (typeof GATES)[GateId], dir: CompassPoint, force: number
       el('div', { class: 'verdict__state' }, ui.label),
       el('p', { class: 'verdict__head' }, r.headline),
       el('p', { class: 'verdict__rule' }, r.rule),
-      el('p', { class: 'verdict__inputs' }, `Input: ${r.inputs.direction} F${force.toString()} · ${r.inputs.degFromFoul}° from ${r.inputs.nearestFoul}`),
+      el('p', { class: 'verdict__inputs' }, `Input: ${r.inputs.direction} F${effForce} · ${r.inputs.degFromFoul}° from ${r.inputs.nearestFoul}`),
+      live
+        ? el('p', { class: 'verdict__inputs' }, `Forecast: ${Math.round(live.kn)} kn${live.gustKn != null ? ` · gusts ${Math.round(live.gustKn)} kn` : ''}`)
+        : null,
       el('p', { class: 'verdict__rule' }, '⚠︎ ' + r.caveat),
     ),
+  )
+}
+
+function windProvenance(s: AppState, gate: Gate, live: LiveWind | null): HTMLElement {
+  if (s.windSource === 'manual') {
+    return el(
+      'p',
+      { class: 'src src--manual' },
+      '⌖ Manual entry — ',
+      el('button', { class: 'linkbtn', type: 'button', onClick: () => store.set({ windSource: 'live' }) }, 'use live forecast'),
+    )
+  }
+  if (live) return feedLine('Live · Open-Meteo', gate, live.targetYmd, live.targetMin, s.wx, live.fetchedTs)
+  const reason = s.wx == null ? 'loading…' : s.wx.offline ? 'offline — using last inputs' : 'beyond the forecast horizon'
+  return el('p', { class: 'src src--offline' }, `○ Live forecast ${reason}. Edit below to assess manually.`)
+}
+
+function swellCard(s: AppState, gate: Gate): HTMLElement {
+  const live = liveWaveForGate(s.wx, s.gateId, s.gateDate)
+  let body: HTMLElement
+  if (live) {
+    body = el(
+      'div',
+      null,
+      timeRow('Wave height', `${live.m.toFixed(1)} m`),
+      live.periodS != null ? timeRow('Period', `${Math.round(live.periodS)} s`) : null,
+      live.dirFromDeg != null ? timeRow('From', `${degToPoint(live.dirFromDeg)} · ${Math.round(live.dirFromDeg)}°`) : null,
+    )
+  } else {
+    const reason = s.wx == null ? 'Loading…' : s.wx.offline ? 'Offline — no cached sea state yet.' : `No marine forecast for ${s.gateDate} (beyond horizon).`
+    body = el('p', { class: 'muted small' }, reason)
+  }
+  return el(
+    'section',
+    { class: 'card' },
+    el('h2', null, `Sea state — ${gate.name}`),
+    live ? feedLine('Live · Open-Meteo Marine', gate, live.targetYmd, live.targetMin, s.wx, live.fetchedTs) : null,
+    body,
+    disclaimer(CAVEATS.forecast),
   )
 }

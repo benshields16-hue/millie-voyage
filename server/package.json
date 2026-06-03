@@ -1,0 +1,13 @@
+{
+  "name": "millie-track-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared read-only live-track backend for S/Y Millie (Tier 1b). Dependency-free Node — runs on built-ins only, no native builds.",
+  "scripts": {
+    "start": "node server.mjs",
+    "simulate": "node scripts/simulate-fixes.mjs",
+    "test": "node --test"
+  },
+  "engines": { "node": ">=18" }
+}
